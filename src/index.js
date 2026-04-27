@@ -7,70 +7,80 @@ app.use('/*', cors())
 
 const TARGET = 'https://hometeaparty.com'
 
-// Fungsi Helper biar gak nulis ulang kode scraping yang sama
+// --- HELPER SCRAPER ---
 async function scrapeList(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
-  const html = await res.text()
-  const $ = load(html)
-  const data = []
-
-  $('article').each((i, el) => {
-    data.push({
-      title: $(el).find('h2, .entry-title').text().trim(),
-      link: $(el).find('a').attr('href'),
-      img: $(el).find('img').attr('src'),
-      // Kadang ada rating atau kualitas di web film, bisa ditambahin di sini kalau ada
+  try {
+    const res = await fetch(url, { 
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } 
     })
-  })
-  return data
+    const html = await res.text()
+    const $ = load(html)
+    const data = []
+
+    // Selector fleksibel untuk menangkap berbagai struktur grid
+    $('article, .post, .item, .ml-item').each((i, el) => {
+      const title = $(el).find('h2, .entry-title, .post-title').text().trim()
+      const link = $(el).find('a').attr('href')
+      const img = $(el).find('img').attr('src')
+
+      if (title && link) {
+        data.push({ title, link, img })
+      }
+    })
+    return data
+  } catch (err) {
+    return []
+  }
 }
 
-// 1. ENDPOINT HOME (Postingan Terbaru)
+// --- ENDPOINTS ---
+
+// 1. Home (Film Terbaru)
 app.get('/', async (c) => {
-  try {
-    const data = await scrapeList(TARGET)
-    return c.json({ status: true, type: 'home', data })
-  } catch (err) {
-    return c.json({ status: false, message: err.message }, 500)
-  }
+  const data = await scrapeList(TARGET)
+  return c.json({ status: true, type: 'home', data })
 })
 
-// 2. ENDPOINT INDONESIA (Kategori)
+// 2. Indonesia (Menggunakan Filter Country agar lebih akurat)
 app.get('/indonesia', async (c) => {
-  try {
-    const data = await scrapeList(`${TARGET}/category/indonesia`)
-    return c.json({ status: true, type: 'category', slug: 'indonesia', data })
-  } catch (err) {
-    return c.json({ status: false, message: err.message }, 500)
-  }
+  const url = `${TARGET}/?s=&search=advanced&post_type=post&country=indonesia`
+  const data = await scrapeList(url)
+  return c.json({ status: true, type: 'category', slug: 'indonesia', data })
 })
 
-// 3. ENDPOINT TAG (Misal: /tag/lebahmovie)
+// 3. Layarkaca21 (Khusus Tag)
+app.get('/layarkaca21', async (c) => {
+  const data = await scrapeList(`${TARGET}/tag/layarkaca21/`)
+  return c.json({ status: true, type: 'tag', slug: 'layarkaca21', data })
+})
+
+// 4. Tag Umum (Bisa buat tag apa saja: /tag/18, /tag/drakor, dll)
 app.get('/tag/:slug', async (c) => {
   const slug = c.req.param('slug')
-  try {
-    const data = await scrapeList(`${TARGET}/tag/${slug}`)
-    return c.json({ status: true, type: 'tag', slug, data })
-  } catch (err) {
-    return c.json({ status: false, message: err.message }, 500)
-  }
+  const data = await scrapeList(`${TARGET}/tag/${slug}/`)
+  return c.json({ status: true, type: 'tag', slug, data })
 })
 
-// 4. ENDPOINT SEARCH
+// 5. Advanced Filter (Bisa pilih country, year, quality, genre)
+app.get('/filter', async (c) => {
+  const { country, quality, year, genre } = c.req.query()
+  const filterUrl = `${TARGET}/?s=&search=advanced&post_type=post&genre=${genre || ''}&movieyear=${year || ''}&country=${country || ''}&quality=${quality || ''}`
+  const data = await scrapeList(filterUrl)
+  return c.json({ status: true, filter: { country, quality, year, genre }, data })
+})
+
+// 6. Search
 app.get('/search', async (c) => {
   const q = c.req.query('q')
-  try {
-    const data = await scrapeList(`${TARGET}/?s=${q}`)
-    return c.json({ status: true, query: q, data })
-  } catch (err) {
-    return c.json({ status: false, message: err.message }, 500)
-  }
+  const data = await scrapeList(`${TARGET}/?s=${q}`)
+  return c.json({ status: true, query: q, data })
 })
 
-// 5. ENDPOINT DETAIL (Buat ambil link video/iframe)
+// 7. Detail (Ambil link streaming/iframe dari dalam postingan)
 app.get('/detail', async (c) => {
   const url = c.req.query('url')
   if (!url) return c.json({ status: false, message: 'URL required' }, 400)
+  
   try {
     const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     const html = await res.text()
@@ -84,7 +94,7 @@ app.get('/detail', async (c) => {
 
     return c.json({ 
       status: true, 
-      title: $('.entry-title').text().trim(),
+      title: $('.entry-title, h1').first().text().trim(),
       streams 
     })
   } catch (err) {
