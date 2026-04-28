@@ -11,34 +11,40 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 async function scrapeList(url) {
   try {
     const res = await fetch(url, { 
-      headers: { 'User-Agent': UA, 'Referer': TARGET } 
+      headers: { 
+        'User-Agent': UA, 
+        'Referer': TARGET,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
+      } 
     })
     const html = await res.text()
     const $ = load(html)
     const data = []
 
-    // Selector disesuain sama struktur pafipasarmuarabungo
     $('.ml-item, article, .item').each((i, el) => {
-      const title = $(el).find('h2, h3, .entry-title').text().trim()
+      const title = $(el).find('h2, h3, .entry-title, .mli-info h2').text().trim()
       const link = $(el).find('a').attr('href')
-      let img = $(el).find('img').attr('data-src') || $(el).find('img').attr('src')
+      let img = $(el).find('img').attr('data-original') || 
+                $(el).find('img').attr('data-src') || 
+                $(el).find('img').attr('src')
       
       if (title && link) {
         if (img && img.startsWith('//')) img = 'https:' + img
-        data.push({ title: title.trim(), link, img: img || '' })
+        data.push({ 
+          title: title.replace(/Nonton|Movie|Subtitle|Indonesia/gi, '').trim(), 
+          link, 
+          img: img || '' 
+        })
       }
     })
     return data
   } catch { return [] }
 }
 
-// FUNGSI KHUSUS INFINITE SCROLL (Ambil banyak data sekaligus)
 async function scrapeInfinite(baseUrl, limitPage = 5) {
   const tasks = []
   for (let i = 1; i <= limitPage; i++) {
-    // Web model gini biasanya tetep nerima parameter ?page= atau /page/ di URL-nya 
-    // meskipun di tampilan gak ada tombolnya
-    const url = i === 1 ? baseUrl : `${baseUrl}/page/${i}/`
+    const url = i === 1 ? baseUrl : `${baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'}page/${i}/`
     tasks.push(scrapeList(url))
   }
   const results = await Promise.all(tasks)
@@ -46,27 +52,46 @@ async function scrapeInfinite(baseUrl, limitPage = 5) {
 }
 
 // --- ENDPOINTS ---
+
+// HOME
 app.get('/', async (c) => c.json({ status: true, data: await scrapeInfinite(TARGET, 3) }))
 
-app.get('/action', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/action/`, 5) }))
-app.get('/drama', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/drama/`, 5) }))
-app.get('/comedy', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/comedy/`, 5) }))
+// GENRE REGULAR (5 Halaman)
+const genres = [
+  'action', 'adventure', 'animation', 'comedy', 'crime', 
+  'drama', 'fantasy', 'family', 'horror', 'mystery', 
+  'romance', 'sci-fi', 'thriller', 'war', 'western'
+]
+genres.forEach(g => {
+  app.get(`/genre/${g}`, async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/${g}/`, 5) }))
+})
 
+// AREA 18+ (Gantiin Endpoint Country)
+app.get('/semi-jepang', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-jepang/`, 5) }))
+app.get('/semi-korea', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-korea/`, 5) }))
+app.get('/semi-philippines', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-philippines/`, 5) }))
+
+// TV MOVIE (Gantiin Endpoint Year)
+app.get('/tv-movie', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/tv-movie/`, 5) }))
+
+// SEARCH
 app.get('/search', async (c) => {
   const q = c.req.query('q')
   return c.json({ status: true, data: await scrapeList(`${TARGET}/?s=${q}`) })
 })
 
+// DETAIL & STREAMING
 app.get('/detail', async (c) => {
   try {
     const url = c.req.query('url')
-    const res = await fetch(url, { headers: { 'User-Agent': UA } })
+    const res = await fetch(url, { headers: { 'User-Agent': UA, 'Referer': TARGET } })
     const html = await res.text()
     const $ = load(html)
     const streams = []
+    
     $('iframe').each((i, el) => {
-      let src = $(el).attr('src') || $(el).attr('data-src')
-      if (src && !src.includes('ads')) {
+      let src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src')
+      if (src && !src.includes('ads') && !src.includes('facebook')) {
         if (src.startsWith('//')) src = 'https:' + src
         streams.push(src)
       }
