@@ -71,7 +71,8 @@ app.get('/romance', async (c) => c.json({ status: true, data: await scrapeList(`
 // LAIN-LAIN
 app.get('/indonesia', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/country/indonesia/`) }))
 app.get('/year-2015', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/year/2015/`) }))
-app.get('/best-rating', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/year/2009/`) }))
+app.get('/year-20009', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/year/2009/`) }))
+app.get('/best-rating', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/best-rating/`) }))
 
 // SEMI COLLECTION
 app.get('/semi-jepang', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/film-semi-jepang/`) }))
