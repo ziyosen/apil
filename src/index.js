@@ -28,8 +28,15 @@ async function scrapeList(url) {
 }
 
 app.get('/', async (c) => c.json({ status: true, data: await scrapeList(TARGET) }))
+app.get('/search', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/?s=${c.req.query('q')}`) }))
 
-// Genre & Category (Tembak Langsung sesuai link yang lu kasih)
+// FIX JALUR TAHUN (Year)
+app.get('/year-2015', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/year/2015/`) }))
+app.get('/year-2009', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/year/2009/`) }))
+
+// Kategori Lain & Genre
+app.get('/indonesia', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/country/indonesia/`) }))
+app.get('/best-rating', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/best-rating/`) }))
 app.get('/mystery', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/mystery/`) }))
 app.get('/crime', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/crime/`) }))
 app.get('/fantasy', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/fantasy/`) }))
@@ -37,13 +44,10 @@ app.get('/romance', async (c) => c.json({ status: true, data: await scrapeList(`
 app.get('/action', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/action/`) }))
 app.get('/drama', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/drama/`) }))
 
-// Hot Tags & Others
-app.get('/indonesia', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/country/indonesia/`) }))
+// Jalur Semi (18+)
 app.get('/semi-jepang', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/film-semi-jepang/`) }))
 app.get('/semi-philippines', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/film-semi-philippines/`) }))
-app.get('/best-rating', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/best-rating/`) }))
-
-app.get('/search', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/?s=${c.req.query('q')}`) }))
+app.get('/semi-korea', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/film-semi-korea/`) }))
 
 app.get('/detail', async (c) => {
   try {
