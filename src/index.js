@@ -14,10 +14,13 @@ async function scrapeList(url) {
     const html = await res.text()
     const $ = load(html)
     const data = []
-    $('.ml-item, .item, article').each((i, el) => {
-      const title = $(el).find('h2, h3, .entry-title').first().text().trim()
+    
+    // Scraper diperkuat biar lebih dapet banyak elemen
+    $('.ml-item, .item, article, .post-item').each((i, el) => {
+      const title = $(el).find('h2, h3, .entry-title, .title').first().text().trim()
       const link = $(el).find('a').first().attr('href')
-      let img = $(el).find('img').attr('data-src') || $(el).find('img').attr('src')
+      let img = $(el).find('img').attr('data-src') || $(el).find('img').attr('src') || $(el).find('img').attr('data-lazy-src')
+      
       if (title && link) {
         if (img && img.startsWith('//')) img = 'https:' + img
         data.push({ title, link, img: img || '' })
@@ -34,18 +37,20 @@ app.get('/search', async (c) => c.json({ status: true, data: await scrapeList(`$
 app.get('/year-2015', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/year/2015/`) }))
 app.get('/year-2009', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/year/2009/`) }))
 
-// GENRE & NEGARA
+// GENRE & NEGARA (DIPERBAIKI JALURNYA)
 app.get('/indonesia', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/country/indonesia/`) }))
 app.get('/best-rating', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/best-rating/`) }))
-app.get('/mystery', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/mystery/`) }))
-app.get('/crime', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/crime/`) }))
-app.get('/fantasy', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/fantasy/`) }))
-app.get('/romance', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/romance/`) }))
+
+// Semua genre wajib pake prefix /genre/
+app.get('/mystery', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/mystery/`) }))
+app.get('/crime', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/crime/`) }))
+app.get('/fantasy', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/fantasy/`) }))
+app.get('/romance', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/romance/`) }))
 app.get('/action', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/action/`) }))
 app.get('/drama', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/drama/`) }))
 app.get('/comedy', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/genre/comedy/`) }))
 
-// SEMI COLLECTION
+// SEMI COLLECTION (Pastiin slug ini bener di web target)
 app.get('/semi-jepang', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/film-semi-jepang/`) }))
 app.get('/semi-philippines', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/film-semi-philippines/`) }))
 app.get('/semi-korea', async (c) => c.json({ status: true, data: await scrapeList(`${TARGET}/film-semi-korea/`) }))
@@ -56,9 +61,11 @@ app.get('/detail', async (c) => {
     const html = await res.text()
     const $ = load(html)
     const streams = []
+    
+    // Ambil semua iframe yang berpotensi jadi player
     $('iframe').each((i, el) => {
-      let src = $(el).attr('src') || $(el).attr('data-src')
-      if (src && !src.includes('ads')) {
+      let src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('data-lazy-src')
+      if (src && !src.includes('ads') && !src.includes('facebook') && !src.includes('twitter')) {
         if (src.startsWith('//')) src = 'https:' + src
         streams.push(src)
       }
