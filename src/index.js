@@ -5,107 +5,62 @@ import { cors } from 'hono/cors'
 const app = new Hono()
 app.use('/*', cors())
 
-// Target tetep sama
-const TARGET = 'https://tv10.lk21official.cc'
-const UA = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'
+const TARGET = 'https://pafipasarmuarabungo.org'
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
-async function scrapePage(url) {
+async function scrapeList(url) {
   try {
-    // TRIK: Kita pake proxy cors-anywhere atau sejenisnya jika Worker diblokir
-    // Untuk sekarang kita coba tembak langsung dengan header super lengkap
     const res = await fetch(url, { 
-      headers: { 
-        'User-Agent': UA,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Referer': 'https://www.google.com/',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'cross-site'
-      } 
+      headers: { 'User-Agent': UA, 'Referer': TARGET } 
     })
-    
     const html = await res.text()
     const $ = load(html)
     const data = []
 
-    // Selector khusus struktur LK21 (Archive & Grid)
-    // Kita cari elemen yang punya link nonton
-    $('article, .grid-main .box, .v-item, .item-infinite').each((i, el) => {
-      const title = $(el).find('h2, h3, a').first().text().trim()
-      const link = $(el).find('a').first().attr('href')
-      let img = $(el).find('img').attr('data-src') || 
-                $(el).find('img').attr('data-original') || 
-                $(el).find('img').attr('src')
+    // Selector disesuain sama struktur pafipasarmuarabungo
+    $('.ml-item, article, .item').each((i, el) => {
+      const title = $(el).find('h2, h3, .entry-title').text().trim()
+      const link = $(el).find('a').attr('href')
+      let img = $(el).find('img').attr('data-src') || $(el).find('img').attr('src')
       
-      if (title && link && link.includes(TARGET)) {
+      if (title && link) {
         if (img && img.startsWith('//')) img = 'https:' + img
-        data.push({ 
-          title: title.replace(/Nonton|Movie|Subtitle|Indonesia/gi, '').trim(), 
-          link, 
-          img: img || '' 
-        })
+        data.push({ title: title.trim(), link, img: img || '' })
       }
     })
-    
-    // Kalau masih kosong, kita coba ambil via selector link langsung
-    if (data.length === 0) {
-        $('a[rel="bookmark"]').each((i, el) => {
-            const title = $(el).attr('title') || $(el).text().trim();
-            const link = $(el).attr('href');
-            if (title && link) data.push({ title, link, img: "" });
-        });
-    }
-
     return data
-  } catch (e) { 
-    return [] 
-  }
+  } catch { return [] }
 }
 
-// Fungsi paging (kita buat 3 page dulu biar gak kena limit Cloudflare)
-async function scrapeFivePages(baseUrl) {
-  const pages = [1, 2, 3]
-  const tasks = pages.map(p => {
-    const url = p === 1 ? baseUrl : `${baseUrl}/page/${p}/`
-    return scrapePage(url)
-  })
+// FUNGSI KHUSUS INFINITE SCROLL (Ambil banyak data sekaligus)
+async function scrapeInfinite(baseUrl, limitPage = 5) {
+  const tasks = []
+  for (let i = 1; i <= limitPage; i++) {
+    // Web model gini biasanya tetep nerima parameter ?page= atau /page/ di URL-nya 
+    // meskipun di tampilan gak ada tombolnya
+    const url = i === 1 ? baseUrl : `${baseUrl}/page/${i}/`
+    tasks.push(scrapeList(url))
+  }
   const results = await Promise.all(tasks)
   return results.flat().filter((v, i, a) => a.findIndex(t => (t.link === v.link)) === i)
 }
 
-app.get('/', async (c) => c.json({ status: true, data: await scrapePage(TARGET) }))
+// --- ENDPOINTS ---
+app.get('/', async (c) => c.json({ status: true, data: await scrapeInfinite(TARGET, 3) }))
 
-// TOP MOVIE
-app.get('/top-movie-today', async (c) => c.json({ status: true, data: await scrapePage(`${TARGET}/top-movie-today/`) }))
-
-// GENRE
-const genres = ['animation', 'action', 'adventure', 'comedy', 'crime', 'fantasy', 'family', 'horror', 'romance', 'thriller']
-genres.forEach(g => {
-  app.get(`/genre/${g}`, async (c) => c.json({ status: true, data: await scrapeFivePages(`${TARGET}/genre/${g}/`) }))
-})
-
-// COUNTRY
-const countries = ['usa', 'japan', 'south-korea', 'china', 'thailand']
-countries.forEach(ct => {
-  app.get(`/country/${ct}`, async (c) => c.json({ status: true, data: await scrapeFivePages(`${TARGET}/country/${ct}/`) }))
-})
-
-// YEAR
-const years = ['2017', '2018', '2019', '2020']
-years.forEach(y => {
-  app.get(`/year/${y}`, async (c) => c.json({ status: true, data: await scrapeFivePages(`${TARGET}/year/${y}/`) }))
-})
+app.get('/action', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/action/`, 5) }))
+app.get('/drama', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/drama/`, 5) }))
+app.get('/comedy', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/comedy/`, 5) }))
 
 app.get('/search', async (c) => {
   const q = c.req.query('q')
-  return c.json({ status: true, data: await scrapePage(`${TARGET}/?s=${q}`) })
+  return c.json({ status: true, data: await scrapeList(`${TARGET}/?s=${q}`) })
 })
 
 app.get('/detail', async (c) => {
   try {
     const url = c.req.query('url')
-    const res = await fetch(url, { headers: { 'User-Agent': UA, 'Referer': TARGET } })
+    const res = await fetch(url, { headers: { 'User-Agent': UA } })
     const html = await res.text()
     const $ = load(html)
     const streams = []
