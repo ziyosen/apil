@@ -13,27 +13,37 @@ async function scrapePage(url) {
     const res = await fetch(url, { 
       headers: { 
         'User-Agent': UA,
-        'Referer': TARGET
+        'Referer': 'https://google.com', // Pura-pura datang dari Google
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
       } 
     })
+    
     if (!res.ok) return []
+    
     const html = await res.text()
     const $ = load(html)
     const data = []
 
-    // UPDATE SELECTOR: LK21 biasanya pake article di dalam grid-wrapper atau id konten
-    $('article, .grid-main .box, .mega-item').each((i, el) => {
-      const title = $(el).find('h2, h3, a').first().text().trim()
+    // Selector paling sakti buat lk21 terbaru
+    $('#archive-content .v-item, .grid-main .box, article, .mega-item').each((i, el) => {
+      // Ambil judul dari h2 atau alt gambar
+      const title = $(el).find('h2, h3, a').first().text().trim() || $(el).find('img').attr('alt')
       const link = $(el).find('a').first().attr('href')
-      // LK21 sering pake lazy load, kita ambil semua kemungkinan atribut gambar
+      
+      // Ambil gambar dari segala penjuru atribut
       let img = $(el).find('img').attr('src') || 
                 $(el).find('img').attr('data-src') || 
-                $(el).find('img').attr('data-original')
+                $(el).find('img').attr('data-original') ||
+                $(el).find('img').attr('srcset')
       
       if (title && link && !link.includes('/category/') && !link.includes('/genre/')) {
+        // Bersihin link gambar kalau ada srcset
+        if (img && img.includes(' ')) img = img.split(' ')[0]
         if (img && img.startsWith('//')) img = 'https:' + img
+        
         data.push({ 
-          title: title.replace('Nonton Movie', '').replace('Subtitle Indonesia', '').trim(), 
+          title: title.replace(/Nonton|Movie|Subtitle|Indonesia/gi, '').trim(), 
           link, 
           img: img || '' 
         })
@@ -46,20 +56,20 @@ async function scrapePage(url) {
 async function scrapeFivePages(baseUrl) {
   const pages = [1, 2, 3, 4, 5]
   const tasks = pages.map(p => {
-    // Perbaikan jalur page: lk21 biasanya pake /v/page/2 atau ?page=2
-    // Kita coba pake format standar /page/x/ dulu
+    // Jalur paginasi lk21 terbaru biasanya pake ?fpage=2 atau /page/2
     const url = p === 1 ? baseUrl : `${baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'}page/${p}/`
     return scrapePage(url)
   })
   
   const results = await Promise.all(tasks)
-  return results.flat()
+  const combined = results.flat()
+  
+  // Buang duplikat berdasarkan link
+  return combined.filter((v, i, a) => a.findIndex(t => (t.link === v.link)) === i)
 }
 
 // --- ENDPOINTS ---
-
 app.get('/', async (c) => c.json({ status: true, data: await scrapePage(TARGET) }))
-
 app.get('/top-movie-today', async (c) => c.json({ status: true, data: await scrapePage(`${TARGET}/top-movie-today/`) }))
 
 // GENRE
@@ -71,7 +81,6 @@ genres.forEach(g => {
 // COUNTRY
 const countries = ['usa', 'japan', 'south-korea', 'china', 'thailand']
 countries.forEach(ct => {
-  // Fix slug: south-korea di lk21 kadang 'korea' atau 'south-korea'
   app.get(`/country/${ct}`, async (c) => c.json({ status: true, data: await scrapeFivePages(`${TARGET}/country/${ct}/`) }))
 })
 
@@ -94,7 +103,6 @@ app.get('/detail', async (c) => {
     const $ = load(html)
     const streams = []
     
-    // Player LK21 biasanya ada di dalam iframe atau script khusus
     $('iframe').each((i, el) => {
       let src = $(el).attr('src') || $(el).attr('data-src')
       if (src && !src.includes('ads') && !src.includes('facebook')) {
