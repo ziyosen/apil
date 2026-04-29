@@ -1,27 +1,25 @@
 import { Hono } from 'hono'
 import { load } from 'cheerio'
 import { cors } from 'hono/cors'
+import { handle } from '@hono/node-server/vercel'
 
-const app = new Hono()
+const app = new Hono().basePath('/api')
 app.use('/*', cors())
 
 const TARGET = 'https://pafipasarmuarabungo.org'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
+// Fungsi dasar untuk mengambil data per halaman
 async function scrapeList(url) {
   try {
     const res = await fetch(url, { 
-      headers: { 
-        'User-Agent': UA, 
-        'Referer': TARGET,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8'
-      } 
+      headers: { 'User-Agent': UA, 'Referer': TARGET },
+      signal: AbortSignal.timeout(7000) // Timeout 7 detik agar tidak stuck
     })
     const html = await res.text()
     const $ = load(html)
     const data = []
 
-    // Selector lebih agresif: nangkep semua kemungkinan pembungkus film
     $('.ml-item, article, .item, .post-item, .v-item').each((i, el) => {
       const title = $(el).find('h2, h3, .entry-title, .mli-info h2, a.title').first().text().trim()
       const link = $(el).find('a').attr('href')
@@ -43,40 +41,76 @@ async function scrapeList(url) {
   } catch { return [] }
 }
 
-async function scrapeInfinite(baseUrl, limitPage = 5) {
-  const tasks = []
-  for (let i = 1; i <= limitPage; i++) {
-    const url = i === 1 ? baseUrl : `${baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'}page/${i}/`
-    tasks.push(scrapeList(url))
+// Fungsi Scrape Massal (Batching per 5 halaman, Total 15)
+async function scrapeInfinite(baseUrl, limitPage = 15) {
+  let combined = []
+  
+  for (let i = 1; i <= limitPage; i += 5) {
+    const batch = []
+    for (let j = i; j < i + 5 && j <= limitPage; j++) {
+      let url = ""
+      if (j === 1) {
+        url = baseUrl
+      } else {
+        // Logika routing paged untuk WordPress (View More)
+        if (baseUrl.includes('?')) {
+          url = `${baseUrl}&paged=${j}`
+        } else {
+          url = `${baseUrl.endsWith('/') ? baseUrl : baseUrl + '/'}page/${j}/`
+        }
+      }
+      batch.push(scrapeList(url))
+    }
+    const results = await Promise.all(batch)
+    const flatRes = results.flat()
+    
+    if (flatRes.length === 0) break 
+    combined = [...combined, ...flatRes]
   }
-  const results = await Promise.all(tasks)
-  const combined = results.flat()
-  // Filter duplikat & pastiin link beneran ke film
-  return combined.filter((v, i, a) => a.findIndex(t => (t.link === v.link)) === i && !v.link.includes('/genre/'));
+
+  // Bersihkan duplikat
+  return combined.filter((v, i, a) => a.findIndex(t => (t.link === v.link)) === i);
 }
 
 // --- ENDPOINTS ---
+
+// Home (3 halaman awal)
 app.get('/', async (c) => c.json({ status: true, data: await scrapeInfinite(TARGET, 3) }))
 
-// GENRE (Fix: Tambahin trailing slash biar gak kena redirect)
+// Genres (Maks 10 Halaman)
 const genres = ['action', 'adventure', 'animation', 'comedy', 'crime', 'drama', 'fantasy', 'family', 'horror', 'mystery', 'romance', 'sci-fi', 'thriller', 'war', 'western']
 genres.forEach(g => {
-  app.get(`/genre/${g}`, async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/${g}/`, 5) }))
+  app.get(`/genre/${g}`, async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/${g}/`, 10) }))
 })
 
-// AREA 18+
-app.get('/semi-jepang', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-jepang/`, 5) }))
-app.get('/semi-korea', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-korea/`, 5) }))
-app.get('/semi-philippines', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-philippines/`, 5) }))
+// Countries (Maks 15 Halaman - Sesuai request bosku)
+const countries = [
+  { slug: 'korea', id: 'south-korea' },
+  { slug: 'japan', id: 'japan' },
+  { slug: 'thailand', id: 'thailand' },
+  { slug: 'hong-kong', id: 'hong-kong' },
+  { slug: 'china', id: 'china' }
+]
+countries.forEach(cn => {
+  app.get(`/country/${cn.slug}`, async (c) => {
+    // Mencoba lewat sistem Search Filter sesuai URL yang bosku temukan
+    const searchUrl = `${TARGET}/?s=&search=advanced&country=${cn.id}`
+    const data = await scrapeInfinite(searchUrl, 15)
+    return c.json({ status: true, data })
+  })
+})
 
-// TV MOVIE
-app.get('/tv-movie', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/tv-movie/`, 5) }))
+// Special / 18+
+app.get('/semi-jepang', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-jepang/`, 15) }))
+app.get('/semi-korea', async (c) => c.json({ status: true, data: await scrapeInfinite(`${TARGET}/genre/semi-korea/`, 15) }))
 
+// Search
 app.get('/search', async (c) => {
   const q = c.req.query('q')
   return c.json({ status: true, data: await scrapeList(`${TARGET}/?s=${q}`) })
 })
 
+// Detail (Ambil Iframe)
 app.get('/detail', async (c) => {
   try {
     const url = c.req.query('url')
@@ -95,4 +129,4 @@ app.get('/detail', async (c) => {
   } catch { return c.json({ status: false, streams: [] }) }
 })
 
-export default app
+export default handle(app)
