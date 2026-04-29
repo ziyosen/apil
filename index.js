@@ -64,7 +64,7 @@ genres.forEach(g => {
 
 // Countries
 const countries = [
-  { slug: 'korea', id: 'south-korea' },
+  { slug: 'korea', id: 'korea' },
   { slug: 'japan', id: 'japan' },
   { slug: 'thailand', id: 'thailand' },
   { slug: 'hong-kong', id: 'hong-kong' }
