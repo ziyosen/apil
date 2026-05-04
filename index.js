@@ -6,7 +6,7 @@ import { handle } from '@hono/node-server/vercel'
 const app = new Hono()
 app.use('/*', cors())
 
-const TARGET = 'https://niagararestoration.org'
+const TARGET = 'https://pafikaoutara.org'
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
 async function scrapeList(url) {
