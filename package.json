@@ -1,10 +1,16 @@
 {
-  "name": "moviehub-api-vercel",
+  "name": "dunia21-scraper-api",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Dunia21 Scraper API",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js"
+  },
   "dependencies": {
-    "hono": "^4.0.0",
-    "@hono/node-server": "^1.0.0",
+    "axios": "^1.6.0",
     "cheerio": "^1.0.0-rc.12"
+  },
+  "engines": {
+    "node": ">=18.x"
   }
 }
