@@ -8,12 +8,17 @@ async function scrapeLatest(page = 1) {
     const targetUrl = pageNum === 1 ? `${BASE_URL}/latest/` : `${BASE_URL}/latest/page/${pageNum}/`;
 
     try {
-        // Menggunakan allorigins proxy untuk bypass WAF/CORS
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-        const response = await axios.get(proxyUrl, { timeout: 15000 });
+        // Menggunakan CORS Proxy yang lebih stabil
+        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
         
-        // Data HTML ada di di dalam property .contents
-        const html = response.data.contents;
+        const response = await axios.get(proxyUrl, { 
+            timeout: 30000, // Timeout dinaikkan ke 30 detik
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+            }
+        });
+        
+        const html = response.data; // corsproxy.io langsung mengembalikan string HTML
         const $ = cheerio.load(html);
         const results = [];
 
